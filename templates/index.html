@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DETR 智能检测平台 | Fudan University</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #004a98; --bg-color: #f8f9fc; --surface: #ffffff; --text-main: #1a202c; --text-sub: #718096; --border: #e2e8f0; --radius: 12px; }
+        body { margin: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; }
+
+        /* 左侧 */
+        .sidebar { width: 320px; background: var(--surface); border-right: 1px solid var(--border); padding: 25px; display: flex; flex-direction: column; gap: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.03); z-index: 10; overflow-y: auto; }
+        .brand { display: flex; align-items: center; gap: 10px; color: var(--primary); margin-bottom: 10px; }
+        .brand h1 { font-size: 18px; font-weight: 800; margin: 0; }
+        
+        .control-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-sub); margin-bottom: 8px; letter-spacing: 0.5px; }
+        .file-box { border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: var(--radius); cursor: pointer; transition: 0.2s; background: #fafafa; }
+        .file-box:hover { border-color: var(--primary); background: #f0f7ff; }
+        
+        input[type=range] { width: 100%; cursor: pointer; }
+        textarea { width: 100%; height: 80px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; resize: none; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+        textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+        .btn { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; transition: 0.2s; }
+        .btn:hover { background: #003670; }
+        .btn:disabled { background: #cbd5e0; cursor: not-allowed; }
+
+        /* 历史记录 */
+        .history-box { border-top: 1px solid var(--border); padding-top: 15px; margin-top: auto; }
+        .history-item { display: flex; justify-content: space-between; font-size: 12px; padding: 8px; background: #f4f6f8; border-radius: 6px; margin-bottom: 6px; }
+
+        /* 右侧 */
+        .main { flex: 1; padding: 30px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
+        
+        /* 统计卡片 */
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .card { background: var(--surface); padding: 15px 20px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .card-title { font-size: 11px; color: var(--text-sub); font-weight: 700; text-transform: uppercase; }
+        .card-val { font-size: 24px; font-weight: 800; color: var(--text-main); margin-top: 5px; }
+        .highlight { color: var(--primary); }
+
+        /* 画布 */
+        .canvas-container { flex: 1; background: #eaedf2; border-radius: var(--radius); position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center; border: 1px solid var(--border); }
+        canvas { max-width: 95%; max-height: 95%; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: none; transition: transform 0.1s; }
+        
+        /* 结果表 */
+        .table-box { height: 180px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 12px 20px; color: var(--text-sub); border-bottom: 1px solid var(--border); background: white; position: sticky; top: 0; z-index: 2; font-size: 12px; }
+        td { padding: 10px 20px; border-bottom: 1px solid #f7fafc; }
+        
+        /* Loading */
+        .loader { position: absolute; inset: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 20; }
+        .spinner { width: 30px; height: 30px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="brand"><i class="fas fa-cube"></i><h1>DETR Vision</h1></div>
+    
+    <div class="control-group">
+        <label>1. 图像输入 (Input)</label>
+        <div class="file-box" onclick="document.getElementById('fileInput').click()">
+            <i class="fas fa-image" style="font-size: 24px; color:#cbd5e0; margin-bottom: 8px;"></i>
+            <div id="fileName" style="font-size: 12px; color: var(--text-sub);">点击上传图片</div>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>2. 置信度阈值 (Score > <span id="confDisplay">0.50</span>)</label>
+        <input type="range" id="threshold" min="0" max="1" step="0.05" value="0.5">
+    </div>
+
+    <div class="control-group">
+        <label>3. 真实框标注 (Ground Truth for IoU)</label>
+        <textarea id="gtBox" placeholder="请输入坐标，格式: x1,y1,x2,y2&#10;例: 10,20,100,200 (换行分隔)"></textarea>
+    </div>
+
+    <button class="btn" id="runBtn" onclick="runDetection()">
+        <i class="fas fa-play"></i> 执行检测
+    </button>
+
+    <div class="history-box">
+        <label style="font-size:11px; font-weight:bold; color:var(--text-sub); margin-bottom:10px; display:block;">IoU 历史记录</label>
+        <div id="historyList">
+            <div style="text-align:center; color:#ccc; font-size:11px;">暂无记录</div>
+        </div>
+    </div>
+</aside>
+
+<main class="main">
+    <div class="stats">
+        <div class="card"><div class="card-title">Detected Objects</div><div class="card-val" id="objCount">--</div></div>
+        <div class="card"><div class="card-title">Mean IoU (平均)</div><div class="card-val highlight" id="meanIoU">--</div></div>
+        <div class="card"><div class="card-title">Max IoU (最大)</div><div class="card-val highlight" id="maxIoU">--</div></div>
+    </div>
+
+    <div class="canvas-container" id="canvasContainer">
+        <div class="loader" id="loader"><div class="spinner"></div><div style="margin-top:10px; font-size:12px; font-weight:600; color:#555">模型正在推理中...</div></div>
+        <div id="emptyState" style="text-align:center; color:#a0aec0;">
+            <i class="far fa-image" style="font-size: 48px; margin-bottom: 10px;"></i>
+            <p style="font-size:14px;">请上传图片开始实验</p>
+        </div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="table-box">
+        <table>
+            <thead>
+                <tr>
+                    <th>Class (类别)</th>
+                    <th>Confidence (置信度)</th>
+                    <th>IoU (交并比)</th>
+                    <th>Bounding Box (坐标)</th>
+                </tr>
+            </thead>
+            <tbody id="resultBody">
+                <tr><td colspan="4" style="text-align:center; color:#ccc;">等待检测...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let currentImage = null;
+    let scale = 1;
+
+    // 滑动条
+    document.getElementById('threshold').addEventListener('input', (e) => {
+        document.getElementById('confDisplay').textContent = parseFloat(e.target.value).toFixed(2);
+    });
+
+    // 图片上传
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if(file) {
+            document.getElementById('fileName').textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                currentImage = new Image();
+                currentImage.onload = () => {
+                    scale = 1;
+                    canvas.width = currentImage.width;
+                    canvas.height = currentImage.height;
+                    canvas.style.transform = `scale(${scale})`;
+                    ctx.drawImage(currentImage, 0, 0);
+                    document.getElementById('emptyState').style.display = 'none';
+                    canvas.style.display = 'block';
+                    // Reset UI
+                    document.getElementById('meanIoU').innerText = '--';
+                    document.getElementById('maxIoU').innerText = '--';
+                    document.getElementById('objCount').innerText = '--';
+                    document.getElementById('resultBody').innerHTML = '<tr><td colspan="4" style="text-align:center; color:#ccc;">准备就绪，请点击“执行检测”</td></tr>';
+                }
+                currentImage.src = evt.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // 滚轮缩放
+    document.getElementById('canvasContainer').addEventListener('wheel', (e) => {
+        if(!currentImage) return;
+        e.preventDefault();
+        scale *= e.deltaY > 0 ? 0.9 : 1.1;
+        scale = Math.min(Math.max(0.1, scale), 10);
+        canvas.style.transform = `scale(${scale})`;
+    });
+
+    async function runDetection() {
+        const fileInput = document.getElementById('fileInput');
+        if(!fileInput.files[0]) { alert("请先上传图片！"); return; }
+
+        document.getElementById('loader').style.display = 'flex';
+        document.getElementById('runBtn').disabled = true;
+
+        const formData = new FormData();
+        formData.append('image', fileInput.files[0]);
+        formData.append('threshold', document.getElementById('threshold').value);
+        formData.append('gt_boxes', document.getElementById('gtBox').value);
+
+        try {
+            const res = await fetch('/predict', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if(data.error) throw new Error(data.error);
+
+            // 1. 更新顶部卡片
+            document.getElementById('objCount').innerText = data.predictions.length;
+            document.getElementById('meanIoU').innerText = data.iou.mean_iou;
+            document.getElementById('maxIoU').innerText = data.iou.max_iou;
+
+            // 2. 绘制 & 表格
+            draw(data.predictions);
+
+            // 3. 历史记录 (只有当计算出 IoU 时才添加)
+            if(data.iou.mean_iou !== '--') {
+                addToHistory(data.iou.mean_iou, data.iou.max_iou);
+            }
+
+        } catch(e) {
+            console.error(e);
+            alert("检测出错: " + e.message);
+        } finally {
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('runBtn').disabled = false;
+        }
+    }
+
+    function draw(predictions) {
+        if(!currentImage) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentImage, 0, 0);
+        
+        const tbody = document.getElementById('resultBody');
+        tbody.innerHTML = '';
+
+        predictions.forEach(pred => {
+            const [x1, y1, x2, y2] = pred.box;
+            const w = x2 - x1;
+            const h = y2 - y1;
+
+            // 画框
+            ctx.lineWidth = Math.max(3, currentImage.width / 400);
+            ctx.strokeStyle = '#00ff00';
+            ctx.strokeRect(x1, y1, w, h);
+
+            // 画标签
+            const fontSize = Math.max(14, currentImage.width / 50);
+            ctx.font = `bold ${fontSize}px Inter, sans-serif`;
+            const label = `${pred.label} ${pred.score.toFixed(2)}`;
+            const tm = ctx.measureText(label);
+            
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+            ctx.fillRect(x1, y1 - fontSize * 1.5, tm.width + 10, fontSize * 1.5);
+            ctx.fillStyle = 'black';
+            ctx.fillText(label, x1 + 5, y1 - fontSize * 0.4);
+
+            // 填充表格
+            // 注意：这里区分了 Confidence 和 IoU
+            let iouDisplay = pred.iou === -1 ? '<span style="color:#ccc">--</span>' : `<strong>${pred.iou.toFixed(4)}</strong>`;
+            if(pred.iou !== -1 && pred.iou < 0.5) iouDisplay = `<span style="color:red">${pred.iou.toFixed(4)}</span>`; // 差的标红
+            if(pred.iou > 0.8) iouDisplay = `<span style="color:green">${pred.iou.toFixed(4)}</span>`; // 好的标绿
+
+            const row = `<tr>
+                <td style="font-weight:600">${pred.label}</td>
+                <td>${pred.score.toFixed(3)}</td>
+                <td>${iouDisplay}</td>
+                <td style="font-family:monospace; color:#666; font-size:11px;">[${Math.round(x1)}, ${Math.round(y1)}, ${Math.round(x2)}, ${Math.round(y2)}]</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    let historyCount = 0;
+    function addToHistory(mean, max) {
+        const list = document.getElementById('historyList');
+        if(historyCount === 0) list.innerHTML = '';
+        
+        const now = new Date();
+        const time = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+        
+        const item = `
+            <div class="history-item">
+                <div>
+                    <span style="color:#999; margin-right:5px;">${time}</span>
+                    <span>Mean IoU</span>
+                </div>
+                <div style="font-weight:bold; color:var(--primary)">${mean}</div>
+            </div>`;
+        list.insertAdjacentHTML('afterbegin', item);
+        historyCount++;
+    }
+</script>
+</body>
+</html>
